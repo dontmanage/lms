@@ -1,0 +1,301 @@
+{% extends "lms/templates/lms_base.html" %}
+{% block title %}
+    {{ _(class_info.title) }}
+{% endblock %}
+
+
+{% block page_content %}
+<div class="common-page-style lms-page-style">
+	<div class="container">
+		{{ BreadCrumb(class_info) }}
+		<div class="">
+			{{ ClassDetails(class_info) }}
+			{{ ClassSections(class_info, class_courses, class_students, published_courses) }}
+		</div>
+	</div>
+</div>
+{% endblock %}
+
+
+<!-- BreadCrumb -->
+{% macro BreadCrumb(class_info) %}
+<div class="breadcrumb">
+    <a class="dark-links" href="/classes">{{ _("All Classes") }}</a>
+    <img class="ml-1 mr-1" src="/assets/lms/icons/chevron-right.svg">
+    <span class="breadcrumb-destination">{{ class_info.title }}</span>
+</div>
+{% endmacro %}
+
+
+<!-- Class Details -->
+{% macro ClassDetails(class_info) %}
+<div class="class-details" data-class="{{ class_info.name }}">
+
+	<div class="course-home-headings">
+		{{ class_info.title }}
+	</div>
+	<div class="mt-2">
+		<svg class="icon icon-sm">
+			<use href="#icon-calendar"></use>
+		</svg>
+		<span>
+			{{ dontmanage.utils.format_date(class_info.start_date, "long") }} -
+		</span>
+		<span>
+			{{ dontmanage.utils.format_date(class_info.end_date, "long") }}
+		</span>
+	</div>
+	{% if class_info.description %}
+	<div class="">
+		{{ class_info.description }}
+	</div>
+	{% endif %}
+
+	{% if class_info.custom_component %}
+		{{ class_info.custom_component }}
+	{% endif %}
+</div>
+{% endmacro %}
+
+
+<!-- Class Sections -->
+{% macro ClassSections(class_info, class_courses, class_students, published_courses) %}
+<div class="mt-4">
+	<ul class="nav lms-nav" id="classes-tab">
+		<li class="nav-item">
+			<a class="nav-link active" data-toggle="tab" href="#courses">
+				{{ _("Courses") }}
+			</a>
+		</li>
+
+		<li class="nav-item">
+			<a class="nav-link" data-toggle="tab" href="#students">
+				{{ _("Students") }}
+			</a>
+		</li>
+
+		{% if class_students | length and (is_moderator or is_student) %}
+		<li class="nav-item">
+			<a class="nav-link" data-toggle="tab" href="#live-class">
+				{{ _("Live Class") }}
+			</a>
+		</li>
+		{% endif %}
+
+	</ul>
+
+	<div class="border-bottom mb-4"></div>
+
+	<div class="tab-content">
+		<div class="tab-pane active" id="courses" role="tabpanel" aria-labelledby="courses">
+			{{ CoursesSection(class_info, class_courses, published_courses) }}
+		</div>
+
+		<div class="tab-pane" id="students" role="tabpanel" aria-labelledby="students">
+			{{ StudentsSection(class_info, class_students) }}
+		</div>
+
+		{% if class_students | length and (is_moderator or is_student) %}
+		<div class="tab-pane" id="live-class" role="tabpanel" aria-labelledby="live-class">
+			{{ LiveClassSection(class_info, live_classes) }}
+		</div>
+		{% endif %}
+
+	</div>
+</div>
+{% endmacro %}
+
+
+{% macro CoursesSection(class_info, class_courses, published_courses) %}
+<div class="class-course-list">
+	{% if published_courses | length %}
+	{% for course in published_courses %}
+	{% set checked = course.name in class_courses  %}
+	<label class="class-course" data-course="{{ course.name }}">
+		<input type="checkbox" {% if checked %} checked {% endif %}
+		{% if not is_moderator %} disabled {% endif %}>
+		{{ course.title }}
+	</label>
+	{% endfor %}
+	{% endif %}
+</div>
+{% endmacro %}
+
+
+{% macro StudentsSection(class_info, class_students) %}
+<div class="">
+	{% if is_moderator %}
+	{{ AddStudents() }}
+	{% endif %}
+
+	{% if class_students | length %}
+	<table class="table">
+		<tr>
+			<th style="width: 70%">
+				{{ _("Student") }}
+			</th>
+			<th style="width: 20%">
+				{{ _("Last Active") }}
+			</th>
+			{% if is_moderator %}
+			<th style="width: 10%"></th>
+			{% endif %}
+		</tr>
+		{% for student in class_students %}
+		{% set last_active = dontmanage.db.get_value("User", student.student, "last_active") %}
+		{% set allow_progress = is_moderator or student.student == dontmanage.session.user or (dontmanage.db.get_single_value("LMS Settings", "allow_student_progress") and
+		is_student) %}
+		<tr>
+			<td>
+				<a class="subheading button-links d-block" {% if allow_progress %} href="/classes/{{ class_info.name }}/students/{{ student.username }}" {% endif %}>
+					{{ student.student_name }}
+				</a>
+			</td>
+			<td>
+				{{ dontmanage.utils.format_datetime(last_active, "medium") }}
+			</td>
+			{% if is_moderator %}
+			<td>
+				<svg class="icon icon-md pull-right remove-student" data-student="{{ student.student }}">
+					<use href="#icon-delete"></use>
+				</svg>
+			</td>
+			{% endif %}
+		</tr>
+		{% endfor %}
+
+	</table>
+	{% else %}
+	<p class="text-muted mt-3 ml-5"> {{ _("No Students are added to this class.") }} </p>
+	{% endif %}
+
+</div>
+{% endmacro %}
+
+
+{% macro AddStudents() %}
+<div class="mb-10">
+	<div class="add-students"></div>
+	<button class="btn btn-primary btn-sm ml-5" id="submit-student">
+		{{ _("Add") }}
+	</button>
+</div>
+{% endmacro %}
+
+
+{% macro LiveClassSection(class_info, live_classes) %}
+<div>
+	{{ CreateLiveClass(class_info) }}
+	{{ LiveClassList(class_info, live_classes) }}
+</div>
+{% endmacro %}
+
+
+{% macro CreateLiveClass(class_info) %}
+
+{% if is_moderator %}
+<button class="btn btn-secondary btn-sm" id="open-class-modal">
+	{{ _("Create a Live Class") }}
+</button>
+
+<div class="modal fade live-class-modal" id="live-class-modal" tabindex="-1" role="dialog">
+	<div class="modal-dialog" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<div class="modal-title">{{ _("Live Class Details") }}</div>
+			</div>
+
+
+			<div class="modal-body">
+				<form class="live-class-form" id="live-class-form"></form>
+			</div>
+
+
+			<div class="modal-footer">
+				<button class="btn btn-secondary btn-sm mr-2" data-dismiss="modal" aria-label="Close">
+					{{ _("Discard") }}
+				</button>
+
+				<button class="btn btn-primary btn-sm" id="create-live-class">
+					{{ _("Submit") }}
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+{% endif %}
+
+{% endmacro %}
+
+
+{% macro LiveClassList(class_info, live_classes) %}
+<div class="lms-card-parent mt-8">
+	{% for class in live_classes %}
+	<div class="lms-card">
+
+		<div class="mb-0">
+			<div class="dropdown pull-right">
+				<svg class="icon icon-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+					<use href="#icon-dot-horizontal"></use>
+				</svg>
+				<ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+					{% if class.owner == dontmanage.session.user %}
+					<li>
+						<a class="dropdown-item small" href="{{ class.start_url }}"> {{ _("Start") }} </a>
+					</li>
+					{% endif %}
+					{% if is_student %}
+					<li>
+						<a class="dropdown-item small" href="{{ class.join_url }}"> {{ _("Join") }} </a>
+					</li>
+					{% endif %}
+
+				</ul>
+			</div>
+			<div class="lms-card-title mb-4">
+				{{ class.title }}
+			</div>
+		</div>
+		<div>
+			<svg class="icon icon-sm">
+				<use href="#icon-calendar"></use>
+			</svg>
+			{{ dontmanage.utils.format_date(class.date, "full") }}
+		</div>
+		<div>
+			<svg class="icon icon-sm">
+				<use href="#icon-clock"></use>
+			</svg>
+			{{ dontmanage.utils.format_time(class.time, "hh:mm a") }}
+		</div>
+
+		<div class="mt-4">
+			{{ class.description }}
+		</div>
+
+	</div>
+	{% endfor %}
+</div>
+{% endmacro %}
+
+{%- block script %}
+    {{ super() }}
+
+	{% if is_moderator %}
+	<script>
+		dontmanage.boot.user = {
+			"can_create": [],
+			"can_select": ["User"],
+			"can_read": ["User"]
+		};
+
+		dontmanage.router = {
+			slug (name) {
+				return name.toLowerCase().replace(/ /g, "-");
+			}
+		}
+	</script>
+	{% endif %}
+
+    {{ include_script('controls.bundle.js') }}
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "templates/base.html" %}
+
+{% block meta_block %}
+    {% include "templates/includes/meta_block.html" %}
+{% endblock %}
+
+{% block content %}
+	{% include "public/icons/symbol-defs.svg" %}
+	{% include "lms/templates/onboarding_header.html" %}
+	{% block page_content %}
+		Hello, world!
+	{% endblock %}
+{% endblock %}
